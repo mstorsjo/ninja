@@ -28,6 +28,11 @@
 #include "util.h"
 #endif
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <dirent.h>
+
 namespace {
 
 /// Return true if \a input ends with \a needle.
@@ -74,6 +79,55 @@ bool CLParser::FilterInputFilename(string line) {
       EndsWith(line, ".cpp");
 }
 
+static void CorrectCase(string* path) {
+  struct stat st;
+  if (stat(path->c_str(), &st) == 0)
+    return;
+  string::size_type pos = 0;
+  string::size_type end = path->length();
+  string partial;
+  while (pos < end) {
+    string::size_type next = path->find('/', pos);
+    if (next == pos) {
+      partial += "/";
+      pos = next + 1;
+      continue;
+    }
+    string name;
+    if (next == string::npos) {
+      name = path->substr(pos);
+    } else {
+      name = path->substr(pos, next - pos);
+    }
+    transform(name.begin(), name.end(), name.begin(), ToLowerASCII);
+    const char* curdir = partial.c_str();
+    if (partial.empty())
+      curdir = ".";
+    DIR *dir = opendir(curdir);
+    if (!dir)
+      return;
+    if (partial != "/" && partial != "")
+      partial += "/";
+    bool found = false;
+    struct dirent* entry;
+    while (!found && (entry = readdir(dir)) != NULL) {
+      string buf = entry->d_name;
+      transform(buf.begin(), buf.end(), buf.begin(), ToLowerASCII);
+      if (buf == name) {
+        found = true;
+        partial += entry->d_name;
+      }
+    }
+    closedir(dir);
+    if (!found)
+      return;
+    if (next == string::npos)
+      break;
+    pos = next + 1;
+  }
+  *path = partial;
+}
+
 // static
 bool CLParser::Parse(const string& output, const string& deps_prefix,
                      string* filtered_output, string* err) {
@@ -104,6 +158,7 @@ bool CLParser::Parse(const string& output, const string& deps_prefix,
       uint64_t slash_bits;
       if (!CanonicalizePath(&normalized, &slash_bits, err))
         return false;
+      CorrectCase(&normalized);
 #endif
       if (!IsSystemInclude(normalized))
         includes_.insert(normalized);
