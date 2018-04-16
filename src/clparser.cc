@@ -60,7 +60,8 @@ bool CLParser::IsSystemInclude(string path) {
   transform(path.begin(), path.end(), path.begin(), ToLowerASCII);
   // TODO: this is a heuristic, perhaps there's a better way?
   return (path.find("program files") != string::npos ||
-          path.find("microsoft visual studio") != string::npos);
+          path.find("microsoft visual studio") != string::npos ||
+          path.find("/msvc") != string::npos);
 }
 
 // static
