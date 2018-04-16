@@ -142,9 +142,15 @@ void Subprocess::OnPipeReady() {
 
 ExitStatus Subprocess::Finish() {
   assert(pid_ != -1);
-  int status;
-  if (waitpid(pid_, &status, 0) < 0)
+  int status, ret;
+  while ((ret = waitpid(pid_, &status, 0)) < 0) {
+    if (errno == EINTR) {
+     Warning("Retrying kill -%d\n", pid_);
+     kill(-pid_, SIGINT);
+     continue;
+    }
     Fatal("waitpid(%d): %s", pid_, strerror(errno));
+  }
   pid_ = -1;
 
   if (WIFEXITED(status)) {
@@ -344,6 +350,8 @@ void SubprocessSet::Clear() {
     // the interruption signal (i.e. SIGINT or SIGTERM) at the same time as us.
     if (!(*i)->use_console_)
       kill(-(*i)->pid_, interrupted_);
+  if (sigprocmask(SIG_SETMASK, &old_mask_, 0) < 0)
+    Fatal("sigprocmask: %s", strerror(errno));
   for (vector<Subprocess*>::iterator i = running_.begin();
        i != running_.end(); ++i)
     delete *i;
